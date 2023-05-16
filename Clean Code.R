@@ -195,7 +195,26 @@ lmmtest<-function(lmmfit, Ztlist.start, Ztlist.end, no.ranef.null=FALSE, simulat
   #Calculate covariance of last ranef under H0
   
   cov.bmhat<-Pm%*%V_%*%t(Pm)
-  C<-chol(cov.bmhat)
+  
+  #removeME: debugging quantities
+  P.mat<-as.matrix(P)
+  Xtilde.mat<-as.matrix(Xtilde)
+  Pm.mat<-as.matrix(Pm)
+  cov.bmhat.mat<-as.matrix(cov.bmhat)
+  V_.mat<-as.matrix(V_)
+  Xtilde.rank<-rankMatrix(Xtilde)
+  cov.bmhat.rank<-rankMatrix(cov.bmhat)
+  P.rank<-rankMatrix(P)
+  Pm.rank<-rankMatrix(Pm)
+  Pm.dim<-dim(Pm)
+  V_.rank<-rankMatrix(V_)
+  #end debugging
+  
+  C<-base::chol(cov.bmhat)
+  #fixME: It appears that this matrix can be rank deficient. Looking at how it is created,
+  #it makes sense that P could be rank deficient, hence C being it as well.
+  #If the true theoretical covariance of bmhat is rank deficient,
+  #we need to cholesky factorize this semi positive def matrix anyway?.
   
   #QR decompose Xtilde, extract Rtilde 
   QR<-base::qr(Xtilde)
@@ -283,3 +302,38 @@ lmmtest(test.model.alt,2,2)
 #However, if a random effect is estimated to be 0 by lmer(), we should obviously exclude it,
 #and there is no need to test for it. 
 #This is why I chose y to have a strong and y_ to have a weak, but present, random slope effect.
+
+
+
+
+#New example: Hierarchical models.
+
+g1<-as.factor(1:10)
+g2<-as.factor(1:5)
+n_obs=20 #ie 20 students per class
+g1<-rep(g1,each=length(g2)*n_obs)
+g2<-rep(rep(g2,each=n_obs),times=10)
+g1<-as.factor(g1)
+g2<-as.factor(g2)
+g1.g2<-g1:g2
+test.df<-data.frame(g1=g1,g2=g2,g1.g2=g1.g2)
+
+y<-simLMM(~(1|g1)+(1|g1.g2),Fixef=c(0),VC_sd=list(c(5),c(4),c(2)),data=test.df)
+#Somewhat clumsy way to simulate hierarchical data, I couldn't find better;
+#(1|g1)+(1|g1:g2) didn't work, so I just created the third factor g1.g2, 
+#If you know how to use simLMM for hierarchical models, please help
+
+y_<-simLMM(~(1|g1)+(1|g1.g2),Fixef=c(0),VC_sd=list(c(5),c(0.4),c(2)),data=test.df)
+
+test.model<-lmer(y~0+(1|g1)+(1|g1:g2),data=test.df)
+test.model.alt<-lmer(y_~0+(1|g1)+(1|g1:g2),data=test.df)
+summary(test.model.alt)
+
+Ztlist<-getME(test.model,"Ztlist")
+Ztlist
+
+lmmtest(test.model,1,1)#fixME: This bugs, why?
+
+debug(lmmtest)
+lmmtest(test.model,1,1)#fixME: This bugs, why?
+undebug(lmmtest)

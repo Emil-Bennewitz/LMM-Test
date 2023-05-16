@@ -114,3 +114,21 @@ R<-qr.R(qr)
 Q
 R
 Q%*%R
+
+## Cholesky Factorization---------------------------------
+
+#Construct symmetric semi positive definite matrix
+A<-Matrix(rnorm(25),nrow=5,ncol=5)
+A<-A+t(A)
+A.inv<-solve(A)
+D<-diag(c(2:5,0))
+B<-A%*%D%*%A.inv
+eigenvalues<-eigen(B,symmetric=TRUE,only.values=TRUE)$values
+eigenvalues#yikes that didn't work well, should be the values in D
+B.chol<-base::chol(B,pivot=TRUE)
+B.rank<-attr(B.chol,"rank")
+B.rank
+B.pivot<-attr(B.chol,"pivot")
+oo<-order(B.pivot)#inverts a permutation
+oo
+B.pivot
