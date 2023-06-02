@@ -134,7 +134,7 @@ create_hierarchical_df<-function(levels1,levels2,obs_per_level){
 
 
 #glmmtest variacnce of z-------------------
-glmmtest<-function(glmmfit,Ztlist.start,Ztlist.end,simulations=10**6){
+glmmtest<-function(glmmfit,Ztlist.start,Ztlist.end,simulations=10**6,H_0=TRUE){
   
   #Specify the positions the ranef corresponds to in the model matrix
   Ztlist<-getME(glmmfit,"Ztlist")
@@ -240,6 +240,9 @@ glmmtest<-function(glmmfit,Ztlist.start,Ztlist.end,simulations=10**6){
   #sqrtWz.cov_<-phi*Diagonal(n=n)+sqrtWZ.new%*%b.cov_%*%t(sqrtWZ.new)
   sqrtWz.cov_<-phi*Diagonal(n=n)+phi*tcrossprod(sqrtWZ.new%*%B_t) #might be better numerically
   #fixME: If I put b.cov instead of b.cov_, I do in fact get reasonable p values.
+  if (H_0==FALSE){
+    sqrtWz.cov_<-phi*Diagonal(n=n)+phi*tcrossprod(sqrtWZ.new%*%Bt) #like this #removeME
+  }
   #However, under H0 the test seems unreasonably powerful (often p value of 0, but sometimes like 0.6).. weird
   
   bmhat.cov_<-Pm%*%sqrtWz.cov_%*%t(Pm)
@@ -260,7 +263,7 @@ glmmtest<-function(glmmfit,Ztlist.start,Ztlist.end,simulations=10**6){
 }
 
 #Create hierarchical dataframe
-test.df<-create_hierarchical_df(6,6,5)
+test.df<-create_hierarchical_df(20,10,5)
 
 
 #simulate Poisson GLMM
@@ -287,5 +290,27 @@ GLMM_model<-glmer(y~1+(1|g1)+(1|g1.g2),verbose=0,family = "poisson",data=test.df
 summary(GLMM_model)
 
 debug(glmmtest)
-glmmtest(GLMM_model,1,1)
+glmmtest(GLMM_model,1,1,H_0=FALSE)
 undebug(glmmtest)
+
+#Simulate the p-values under H1 to see if the function is reasonable under H1, and the problem lies with the modified covariance of hatb under H0.
+simulations<-100
+pvalues<-rep(NaN,simulations)
+for (i in 1:simulations){
+  intercept<-4
+  predictor<-simLMM(~(1|g1)+(1|g1.g2),Fixef = c(intercept),VC_sd=list(c(5),c(0.05),c(0)),verbose=FALSE,data=test.df)
+  y<-rpois(n=length(predictor),lambda=exp(predictor))
+  GLMM_model<-glmer(y~1+(1|g1)+(1|g1.g2),verbose=0,family = "poisson",data=test.df)
+  
+  result<-tryCatch({
+    # Code to be executed
+    pvalues[i]<-glmmtest(GLMM_model,1,1,simulations=5*10**4,H_0=FALSE)
+  }, error = function(err) {
+    # Code to handle the error
+    pvalues[i] <- NaN
+  })
+  
+}
+plot(sort(pvalues))
+abline(a=0,b=0.01)
+#p values are reasonable, slightly larger than expected
