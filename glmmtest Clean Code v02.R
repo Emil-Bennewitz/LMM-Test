@@ -14,13 +14,16 @@ set.seed(123)
 #Note: total distribution is simulated "simulations" times <-increasing load with nr factor levels/ranefs 
 #gets too much when hundreds of factor levels
 
-sum.chi.squares.distr<-function(list.weights,quantile,simulations=1000000){
-  sum=rep(0,simulations)
-  for (weight in list.weights){
-    sum=sum+weight*rchisq(simulations,1)
-  }
-  result<-ecdf(sum)(quantile)
-  return(result)
+#if specify return_data=TRUE, (or something else), then it returns only the simulated data
+sum.chi.squares.distr<-function(list.weights,quantile,simulations=10**6,return_data=FALSE){
+  if(return_data==FALSE){
+    sum=rep(0,simulations)
+    for (weight in list.weights){
+      sum=sum+weight*rchisq(simulations,1)
+    }
+    result<-ecdf(sum)(quantile)
+    return(result)
+  } else{ return(sum) }
 }
 sum.chi.squares.distr(c(48),100)
 sum.chi.squares.distr(rep(1,48),100)
@@ -127,7 +130,8 @@ create_hierarchical_df<-function(levels1,levels2,obs_per_level){
   g2<-as.factor(g2)
   g1.g2<-g1:g2
   test.df<-data.frame(g1=g1,g2=g2,g1.g2=g1.g2)
-  
+  return(test.df)
+  #wasn't a return(test.df) missing before?
 }
 
 # glmmtestPQL--------------
@@ -262,7 +266,7 @@ glmmtestPQL<-function(glmmfit, Ztlist.start, Ztlist.end, simulations=10**6){
   
   termwithR<-R-t(Q)%*%B_completed
   
-  f.cov_<-t(Q)%*%phiId_completed%*%Q+termwithR%*%psi.completed%*%termwithR
+  f.cov_<-t(Q)%*%phiId_completed%*%Q+phi*termwithR%*%psi.completed%*%termwithR
   f1.cov_<-f.cov_[(p+M-pm+1):(p+M),(p+M-pm+1):(p+M)]
   
   e<-eigen(f1.cov_,symmetric = TRUE, only.values = TRUE)
@@ -428,8 +432,8 @@ glmmtest<-function(glmmfit,Ztlist.start,Ztlist.end,simulations=10**6,H_0=TRUE){
 }
 
 #Create hierarchical dataframe
-test.df<-create_hierarchical_df(20,10,5)
-
+#test.df<-create_hierarchical_df(20,10,5)
+test.df<-create_hierarchical_df(10,10,20) 
 
 #simulate Poisson GLMM
 intercept<-4
@@ -444,6 +448,12 @@ summary(GLMM_model)
 debug(glmmtest)
 glmmtest(GLMM_model,1,1)
 undebug(glmmtest)
+
+#Checking weights W
+GLMM_model@resp$sqrtWrkWt()^2-weights(GLMM_model,"working")
+#oh okay so this is the same thing, perhaps I should switch back to the working weights then.
+
+
 
 #Using the function------------
 #Could the problem have to do with offsets? Do it again, this time let glmer estimate the intercept, no offsets
@@ -570,7 +580,12 @@ hierarchical_simulationPQL<-function(VC_sd=list(c(5),c(0),c(0)),nr_tests=10**2,s
     tryCatch({
       GLMM_model<-glmer(y~1+(1|g1)+(1|g1.g2),verbose=0,family = "poisson",data=test.df)
       p_value<-glmmtestPQL(GLMM_model,1,1,simulations=10**4)
-    }, error=function(err){p_value<-NaN}) #the error thing doesnt seem to work
+    }, error=function(err){
+      p_value<-NaN
+      print(err)}) #the error thing doesnt seem to work
+    #Why did I need a try again? Does the model not converging generate an error?
+    #Oh I believe for strange fits/nonconvergence the cholesky factorization fails sometimes.
+    
     p_value_vector<-append(p_value_vector,p_value)
     if(is.nan(p_value)){
       H0_count<-H0_count+1
@@ -603,5 +618,11 @@ for (i in 1:nr_points){
 plot((1:nr_points)*0.02,p_valuesPQL,xlab="SD of tested Random Effect",ylab = "Average p value",main = "Performance of glmmtestPQL")
 plot((1:nr_points)*0.02,powerPQL,xlab="SD of tested Random Effect",ylab="Power",main = "Performance of glmmtestPQL") #fantastic results!!!
 
+#Significance Test
 
+result<-hierarchical_simulationPQL(nr_tests=400)
 
+result[[1]]/400#significance level 
+result[[3]]# p-value
+
+#apparently, no tests rejected H0, and the p values are abnormally concentrated around 0.5. Worrying.
